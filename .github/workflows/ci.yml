@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Check, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: verify
+    # Runs only on main, and only once the repository variable DEPLOY_ENABLED
+    # is set to "true" (after the one-time setup in the README).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TICKET_SECRET: ${{ secrets.TICKET_SECRET }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check configuration
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID TICKET_SECRET; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set."
+              missing=1
+            fi
+          done
+          if grep -nE '"(database_id|id)": "0{8}' apps/*/wrangler.jsonc; then
+            echo "::error::Placeholder D1/KV ids are still in wrangler.jsonc. See the Deploy section of the README."
+            missing=1
+          fi
+          exit $missing
+
+      - name: Ensure the results queue exists
+        working-directory: apps/game
+        run: |
+          if pnpm exec wrangler queues info board-game-results > /dev/null 2>&1; then
+            echo "Queue already exists."
+          else
+            pnpm exec wrangler queues create board-game-results
+          fi
+
+      - name: Apply D1 migrations
+        run: pnpm db:migrate:remote
+
+      # The realtime Worker goes first: the web app depends on its sockets.
+      - name: Deploy realtime Worker
+        run: pnpm --filter @bg/realtime run deploy
+      - name: Set realtime Worker secret
+        working-directory: apps/game
+        run: printf '%s' "$TICKET_SECRET" | pnpm exec wrangler secret put TICKET_SECRET
+
+      - name: Deploy web Worker
+        run: pnpm --filter @bg/web run deploy
+      - name: Set web Worker secret
+        working-directory: apps/web
+        run: printf '%s' "$TICKET_SECRET" | pnpm exec wrangler secret put TICKET_SECRET
