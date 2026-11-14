@@ -1,36 +1,117 @@
 @import 'tailwindcss';
+@import '@fontsource/caveat-brush/400.css';
+@import '@fontsource-variable/figtree/index.css';
 
+/*
+ * A chalkboard: tic-tac-toe is a game you draw, and here marks get rubbed out.
+ * Two chalk colours tell the players apart (shape does too), everything else
+ * is white chalk on slate.
+ */
 @theme {
-	--color-ink: #0f1115;
-	--color-panel: #181b22;
-	--color-line: #2a2f3a;
-	--color-x: #5eead4;
-	--color-o: #fda4af;
+	--color-slate: #1f3832;
+	--color-slate-deep: #172b26;
+	--color-slate-lift: #284840;
+	--color-chalk: #f1eee4;
+	--color-dust: #a3b8b0;
+	--color-x: #f5d469;
+	--color-o: #8fd3ee;
+	--color-warn: #f4a274;
+
+	--font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-hand: 'Caveat Brush', 'Figtree Variable', cursive;
 }
 
 html {
-	background: var(--color-ink);
-	color: #e7e9ee;
+	background: var(--color-slate);
+	color: var(--color-chalk);
 	color-scheme: dark;
+	font-family: var(--font-sans);
 }
 
-@keyframes pop {
+body {
+	/* A wiped board is never one flat colour. */
+	background:
+		radial-gradient(120% 80% at 20% 0%, rgb(255 255 255 / 0.045), transparent 60%),
+		radial-gradient(90% 70% at 100% 100%, rgb(0 0 0 / 0.18), transparent 65%);
+	background-attachment: fixed;
+	min-height: 100dvh;
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-chalk);
+	outline-offset: 3px;
+	border-radius: 2px;
+}
+
+@layer components {
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4px;
+		padding: 0.7rem 1.4rem;
+		font-weight: 600;
+		line-height: 1.2;
+		border: 2px solid var(--color-chalk);
+		transition:
+			background-color 120ms,
+			color 120ms;
+	}
+	.btn-solid {
+		background: var(--color-chalk);
+		color: var(--color-slate-deep);
+	}
+	.btn-solid:hover {
+		background: #fff;
+		border-color: #fff;
+	}
+	.btn-line {
+		color: var(--color-chalk);
+	}
+	.btn-line:hover {
+		background: rgb(255 255 255 / 0.08);
+	}
+	.btn-quiet {
+		border-color: transparent;
+		color: var(--color-dust);
+		padding: 0.5rem 0.9rem;
+		font-weight: 500;
+	}
+	.btn-quiet:hover {
+		color: var(--color-chalk);
+		background: rgb(255 255 255 / 0.06);
+	}
+
+	/* A ruled chalk line used to separate rows. */
+	.rule {
+		border-color: rgb(241 238 228 / 0.16);
+	}
+}
+
+/* Marks are drawn on, the way a hand would. */
+@keyframes draw {
 	from {
-		transform: scale(0.6);
-		opacity: 0;
+		stroke-dashoffset: 1;
 	}
 	to {
-		transform: scale(1);
-		opacity: 1;
+		stroke-dashoffset: 0;
 	}
 }
 
-.mark-pop {
-	animation: pop 140ms ease-out;
+.stroke-draw {
+	stroke-dasharray: 1;
+	stroke-dashoffset: 0;
+	animation: draw 220ms ease-out backwards;
+}
+.stroke-draw.second {
+	animation-delay: 140ms;
+}
+.stroke-draw.slow {
+	animation-duration: 420ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.mark-pop {
+	.stroke-draw {
 		animation: none;
 	}
 }

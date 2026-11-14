@@ -3,35 +3,42 @@
 
 	let { data }: PageProps = $props();
 
-	const reasons = { line: 'three in a line', timeout: 'on time', resign: 'by resignation' } as const;
+	const reasons = {
+		line: 'Three in a line',
+		timeout: 'On time',
+		resign: 'By resignation'
+	} as const;
 	const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 </script>
 
-<h1 class="py-4 text-2xl font-semibold tracking-tight">Your matches</h1>
+<h1 class="pt-4 font-hand text-5xl leading-none">Your games</h1>
 
 {#if data.matches.length === 0}
-	<p class="rounded-xl border border-line bg-panel p-6 text-zinc-400">
-		Nothing here yet. Finished matches appear a few seconds after they end.
+	<p class="mt-5 max-w-[40ch] text-dust">
+		No finished games yet. They show up here a few seconds after they end.
 	</p>
+	<a href="/play" class="btn btn-solid mt-5">Play ranked</a>
 {:else}
-	<ul class="space-y-2">
+	<ul class="mt-6">
 		{#each data.matches as match (match.id)}
-			<li class="flex items-center justify-between gap-4 rounded-xl border border-line bg-panel px-4 py-3">
-				<div class="min-w-0">
-					<p class="truncate font-medium">
-						<span class={match.won ? 'text-x' : 'text-o'}>{match.won ? 'Won' : 'Lost'}</span>
-						vs {match.opponent}
-					</p>
-					<p class="text-xs text-zinc-500">
-						{reasons[match.reason]} · {match.moveCount} moves · played {match.symbol} ·
-						{date.format(match.endedAt)}
+			<li class="rule flex items-center gap-4 border-b py-3">
+				<p class="w-16 shrink-0 font-hand text-3xl leading-none {match.won ? 'text-x' : 'text-o'}">
+					{match.won ? 'Won' : 'Lost'}
+				</p>
+				<div class="min-w-0 flex-1">
+					<p class="truncate text-lg font-semibold">against {match.opponent}</p>
+					<p class="text-sm text-dust">
+						{reasons[match.reason]} after {match.moveCount} moves, playing {match.symbol}.
+						<span class="whitespace-nowrap">{date.format(match.endedAt)}</span>
 					</p>
 				</div>
-				<p class="shrink-0 text-sm tabular-nums text-zinc-400">
+				<p class="shrink-0 text-right">
 					{#if match.ranked}
-						{match.ratingChange >= 0 ? '+' : ''}{match.ratingChange}
+						<span class="font-hand text-3xl leading-none tabular-nums">
+							{match.ratingChange >= 0 ? '+' : '−'}{Math.abs(match.ratingChange)}
+						</span>
 					{:else}
-						unranked
+						<span class="text-sm text-dust">friendly</span>
 					{/if}
 				</p>
 			</li>

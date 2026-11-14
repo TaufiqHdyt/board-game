@@ -43,23 +43,24 @@
 	});
 </script>
 
-<div class="rounded-xl border border-line bg-panel p-8 text-center">
+<div class="mx-auto max-w-md pt-10 text-center">
 	{#if status === 'elsewhere'}
-		<h1 class="text-xl font-semibold">Searching in another tab</h1>
-		<p class="mt-2 text-zinc-400">You can only be in the queue once.</p>
+		<h1 class="font-hand text-4xl">Searching in another tab</h1>
+		<p class="mt-3 text-dust">You can only wait in the queue once. Close the other tab to search here.</p>
 	{:else if status === 'matched'}
-		<h1 class="text-xl font-semibold" role="status">Opponent found</h1>
+		<h1 class="font-hand text-4xl" role="status">Opponent found</h1>
 	{:else}
-		<h1 class="text-xl font-semibold" role="status">Finding an opponent…</h1>
-		<p class="mt-2 tabular-nums text-zinc-400">
-			{seconds}s
-			{#if waiting !== null && waiting > 1}· {waiting} players waiting{/if}
+		<h1 class="font-hand text-4xl" role="status">Finding an opponent</h1>
+		<p class="mt-4 font-hand text-7xl leading-none tabular-nums" aria-label="{seconds} seconds waited">
+			{seconds}<span class="text-3xl text-dust">s</span>
 		</p>
-		<p class="mx-auto mt-4 max-w-sm text-sm text-zinc-500">
-			We look for someone near your rating first, then widen the search the longer you wait.
+		<p class="mx-auto mt-5 max-w-[32ch] text-dust">
+			{#if waiting !== null && waiting > 1}
+				{waiting} players are waiting. The rating range widens the longer you wait.
+			{:else}
+				We look near your rating first, then widen the range the longer you wait.
+			{/if}
 		</p>
 	{/if}
-	<a href="/" class="mt-6 inline-block rounded-lg border border-line px-4 py-2 text-sm hover:bg-ink">
-		Cancel
-	</a>
+	<a href="/" class="btn btn-quiet mt-8">Cancel</a>
 </div>

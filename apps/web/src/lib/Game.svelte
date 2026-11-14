@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { cellOwner, eloDelta, fadingCell, winningLine, type Seat } from '@bg/game';
+	import { eloDelta, otherSeat, type Seat } from '@bg/game';
 	import { RoomServerMsg, type ClientMsg, type RoomState } from '@bg/proto';
 	import { onMount } from 'svelte';
+	import Board from './Board.svelte';
+	import Glyph from './Glyph.svelte';
 	import { openSocket } from './socket';
 
 	let { room }: { room: string } = $props();
@@ -89,7 +91,6 @@
 	const moveLeft = $derived(
 		game && playing ? Math.max(0, Math.min(game.moveMs, game.bank[game.board.turn]) - elapsed) : 0
 	);
-	const winLine = $derived(game && game.reason === 'line' ? winningLine(game.board) : null);
 	const iWon = $derived(game?.status === 'ended' && game.board.winner === game.you);
 
 	const ratingChange = $derived.by(() => {
@@ -135,149 +136,133 @@
 			notice = 'Copy the address from your browser bar to share it.';
 		}
 	}
-
-	const seats: Seat[] = [0, 1];
-	const symbols = ['✕', '◯'] as const;
-	const cells = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 </script>
 
+{#snippet playerRow(state: RoomState, seat: Seat)}
+	{@const player = state.players[seat]}
+	{@const active = state.status === 'playing' && state.board.turn === seat}
+	{@const left = bankFor(seat)}
+	<div class="py-2.5">
+		<div class="flex items-center gap-3">
+			<Glyph {seat} size={26} />
+			<div class="min-w-0 flex-1">
+				<p class="truncate text-lg leading-tight font-semibold">
+					{player?.name}{#if seat === state.you}<span class="ml-1.5 font-normal text-dust">(you)</span>{/if}
+				</p>
+				<p class="text-sm text-dust">
+					Rated {player?.mmr}
+					{#if !state.connected[seat] && state.status === 'playing'}
+						<span class="ml-2 text-warn">disconnected</span>
+					{/if}
+				</p>
+			</div>
+			<p
+				class="font-hand text-4xl leading-none tabular-nums {active
+					? left < 15000
+						? 'text-warn'
+						: 'text-chalk'
+					: 'text-dust'}"
+				aria-label="Time left for {player?.name}"
+			>
+				{clock(left)}
+			</p>
+		</div>
+		<!-- The move timer: a chalk line under whoever is to move, rubbed away as time runs. -->
+		<div class="mt-2 h-[3px]" aria-hidden="true">
+			{#if active}
+				<div
+					class="h-full rounded-full {moveLeft < 5000 ? 'bg-warn' : seat === 0 ? 'bg-x' : 'bg-o'}"
+					style="width: {(moveLeft / state.moveMs) * 100}%"
+				></div>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
 {#if link === 'replaced'}
-	<p class="rounded-lg border border-line bg-panel p-5">
-		This game is open in another tab. Close that tab and reload to play here.
-	</p>
+	<div class="mx-auto max-w-md pt-10 text-center">
+		<h1 class="font-hand text-4xl">Open in another tab</h1>
+		<p class="mt-3 text-dust">This game moved to your other tab. Close it and reload to play here.</p>
+	</div>
 {:else if link === 'refused'}
-	<div class="rounded-lg border border-line bg-panel p-5">
-		<p>This room is full or no longer exists.</p>
-		<a href="/" class="mt-3 inline-block text-x underline">Back to the lobby</a>
+	<div class="mx-auto max-w-md pt-10 text-center">
+		<h1 class="font-hand text-4xl">This room is closed</h1>
+		<p class="mt-3 text-dust">It already has two players, or the game ended a while ago.</p>
+		<a href="/" class="btn btn-line mt-6">Back to the lobby</a>
 	</div>
 {:else if !game}
-	<p class="py-10 text-center text-zinc-400" role="status">Connecting…</p>
+	<p class="pt-16 text-center font-hand text-3xl text-dust" role="status">Connecting…</p>
 {:else if game.status === 'waiting'}
-	<div class="rounded-xl border border-line bg-panel p-6 text-center">
-		<h1 class="text-xl font-semibold">Waiting for your friend</h1>
-		<p class="mt-2 text-zinc-400">Send them this page's link. The game starts when they open it.</p>
-		<button
-			onclick={copyLink}
-			class="mt-5 rounded-lg bg-x px-5 py-2.5 font-medium text-ink hover:brightness-110"
-		>
+	<div class="mx-auto max-w-md pt-10 text-center">
+		<h1 class="font-hand text-5xl leading-none">Waiting for your friend</h1>
+		<p class="mx-auto mt-4 max-w-[30ch] text-dust">
+			Send them the link to this page. The game starts as soon as they open it.
+		</p>
+		<button onclick={copyLink} class="btn btn-solid mt-7">
 			{copied ? 'Link copied' : 'Copy invite link'}
 		</button>
-		<p class="mt-4 text-xs text-zinc-500">Friend games are unranked.</p>
+		{#if notice}<p class="mt-3 text-sm text-warn">{notice}</p>{/if}
+		<p class="mt-6 text-sm text-dust">Games with friends don't change your rating.</p>
 	</div>
 {:else}
-	<div class="mx-auto max-w-md">
-		<div class="grid grid-cols-2 gap-3">
-			{#each seats as seat (seat)}
-				{@const player = game.players[seat]}
-				{@const active = playing && game.board.turn === seat}
-				<div
-					class="rounded-xl border bg-panel p-3 transition-colors {active
-						? seat === 0
-							? 'border-x'
-							: 'border-o'
-						: 'border-line'}"
-				>
-					<div class="flex items-center justify-between gap-2">
-						<span class="text-lg {seat === 0 ? 'text-x' : 'text-o'}" aria-hidden="true">
-							{symbols[seat]}
-						</span>
-						<span class="font-mono text-lg tabular-nums" aria-label="Time left">
-							{clock(bankFor(seat))}
-						</span>
-					</div>
-					<p class="mt-1 truncate text-sm font-medium">
-						{player?.name}{seat === game.you ? ' (you)' : ''}
-					</p>
-					<p class="text-xs text-zinc-500">
-						{player?.mmr}
-						{#if !game.connected[seat] && game.status === 'playing'}
-							· <span class="text-amber-300">disconnected</span>
-						{/if}
-					</p>
-				</div>
-			{/each}
-		</div>
+	{@const state = game}
+	<div class="mx-auto max-w-[26rem]">
+		{@render playerRow(state, otherSeat(state.you))}
 
-		<div class="mt-4 h-1.5 overflow-hidden rounded-full bg-panel" aria-hidden="true">
-			<div
-				class="h-full rounded-full {moveLeft < 5000 ? 'bg-amber-300' : 'bg-zinc-400'}"
-				style="width: {playing ? (moveLeft / game.moveMs) * 100 : 0}%"
-			></div>
-		</div>
-
-		<p class="mt-3 min-h-6 text-center text-sm" role="status" aria-live="polite">
-			{#if game.status === 'ended'}
-				<span class="font-semibold {iWon ? 'text-x' : 'text-o'}">{iWon ? 'You won.' : 'You lost.'}</span>
-				{endText(game)}
-			{:else if myTurn}
-				<span class="font-medium">Your move</span>
-				<span class="text-zinc-400">· {Math.ceil(moveLeft / 1000)}s</span>
-			{:else}
-				<span class="text-zinc-400">Opponent is thinking…</span>
-			{/if}
-		</p>
-
-		<div class="mt-3 grid aspect-square grid-cols-3 gap-2" role="group" aria-label="Board">
-			{#each cells as cell (cell)}
-				{@const owner = cellOwner(game.board, cell)}
-				{@const fading = owner !== null && playing && fadingCell(game.board, owner) === cell}
-				{@const winning = winLine?.includes(cell) ?? false}
-				<button
-					type="button"
-					disabled={!myTurn || owner !== null}
-					onclick={() => send({ type: 'move', cell })}
-					aria-label="Row {Math.floor(cell / 3) + 1}, column {(cell % 3) + 1}: {owner === null
-						? 'empty'
-						: symbols[owner] === '✕'
-							? 'X'
-							: 'O'}{fading ? ', vanishes next' : ''}"
-					class="flex items-center justify-center rounded-xl border bg-panel text-5xl transition-colors
-						focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
-						{winning ? 'border-white' : fading ? 'border-dashed border-zinc-500' : 'border-line'}
-						{myTurn && owner === null ? 'cursor-pointer hover:bg-line' : 'cursor-default'}"
-				>
-					{#if owner !== null}
-						<span
-							class="mark-pop {owner === 0 ? 'text-x' : 'text-o'} {fading ? 'opacity-35' : ''}"
-							aria-hidden="true"
-						>
-							{symbols[owner]}
-						</span>
-					{/if}
-				</button>
-			{/each}
-		</div>
-
-		<p class="mt-3 min-h-5 text-center text-xs text-zinc-500">
-			{#if notice}
-				<span class="text-amber-300">{notice}</span>
-			{:else if link === 'lost'}
-				<span class="text-amber-300">Connection lost. Reconnecting…</span>
-			{:else if playing}
-				A dimmed mark with a dashed border vanishes on its owner's next move.
-			{/if}
-		</p>
-
-		<div class="mt-4 flex justify-center gap-3">
-			{#if game.status === 'ended'}
-				{#if ratingChange !== null}
-					<span class="self-center text-sm tabular-nums text-zinc-400">
-						Rating {ratingChange >= 0 ? '+' : ''}{ratingChange}
+		<div class="rule border-y py-3">
+			<p class="min-h-9 text-center" role="status" aria-live="polite">
+				{#if state.status === 'ended'}
+					<span class="font-hand text-3xl leading-none {iWon ? 'text-x' : 'text-o'}">
+						{iWon ? 'You won.' : 'You lost.'}
 					</span>
+					<span class="ml-1 text-dust">{endText(state)}</span>
+				{:else if myTurn}
+					<span class="font-hand text-3xl leading-none">Your move</span>
+					<span class="ml-1 tabular-nums {moveLeft < 5000 ? 'text-warn' : 'text-dust'}">
+						{Math.ceil(moveLeft / 1000)}s
+					</span>
+				{:else}
+					<span class="text-dust">Waiting for {state.players[otherSeat(state.you)]?.name}</span>
 				{/if}
-				<a
-					href={game.ranked ? '/play' : '/'}
-					data-sveltekit-reload
-					class="rounded-lg bg-x px-5 py-2.5 font-medium text-ink hover:brightness-110"
-				>
-					{game.ranked ? 'Play again' : 'Back to lobby'}
+			</p>
+
+			<div class="mx-auto mt-1 max-w-[22rem]">
+				<Board
+					board={state.board}
+					showWin={state.reason === 'line'}
+					canPlay={myTurn ? state.you : null}
+					onplay={(cell) => send({ type: 'move', cell })}
+				/>
+			</div>
+
+			<p class="min-h-5 text-center text-sm text-dust">
+				{#if notice}
+					<span class="text-warn">{notice}</span>
+				{:else if link === 'lost'}
+					<span class="text-warn">Connection lost. Reconnecting…</span>
+				{:else if playing && state.board.moveCount >= 5}
+					A dotted mark is rubbed out on its owner's next move.
+				{/if}
+			</p>
+		</div>
+
+		{@render playerRow(state, state.you)}
+
+		<div class="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+			{#if state.status === 'ended'}
+				{#if ratingChange !== null}
+					<p class="text-dust">
+						Rating
+						<span class="font-hand text-3xl tabular-nums {ratingChange >= 0 ? 'text-x' : 'text-o'}">
+							{ratingChange >= 0 ? '+' : '−'}{Math.abs(ratingChange)}
+						</span>
+					</p>
+				{/if}
+				<a href={state.ranked ? '/play' : '/'} data-sveltekit-reload class="btn btn-solid">
+					{state.ranked ? 'Play again' : 'Back to the lobby'}
 				</a>
 			{:else}
-				<button
-					type="button"
-					onclick={() => send({ type: 'resign' })}
-					class="rounded-lg border border-line px-4 py-2 text-sm text-zinc-400 hover:bg-panel hover:text-white"
-				>
+				<button type="button" onclick={() => send({ type: 'resign' })} class="btn btn-quiet">
 					Resign
 				</button>
 			{/if}
