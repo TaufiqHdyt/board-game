@@ -10,12 +10,12 @@
 	"scripts": {
 		"dev": "vite dev --port 5173",
 		"dev:host": "vite dev --port 5173 --host",
-		"build": "wrangler types && vite build",
+		"build": "wrangler types --env-file .dev.vars.example && vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173 --persist-to ../../.wrangler/state",
 		"deploy": "pnpm build && wrangler deploy",
 		"prepare": "svelte-kit sync || echo ''",
-		"check": "wrangler types && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"types": "wrangler types"
+		"check": "wrangler types --env-file .dev.vars.example && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"types": "wrangler types --env-file .dev.vars.example"
 	},
 	"dependencies": {
 		"@bg/db": "workspace:*",
