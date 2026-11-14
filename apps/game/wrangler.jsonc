@@ -1,0 +1,35 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "board-game-realtime",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-01",
+	"observability": { "enabled": true },
+
+	"durable_objects": {
+		"bindings": [
+			{ "name": "GAME_ROOM", "class_name": "GameRoom" },
+			{ "name": "MATCHMAKER", "class_name": "Matchmaker" }
+		]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom", "Matchmaker"] }],
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "board-game",
+			// Replace with the id printed by `wrangler d1 create board-game`.
+			// Must match apps/web/wrangler.jsonc.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../packages/db/migrations"
+		}
+	],
+
+	"queues": {
+		"producers": [{ "binding": "RESULTS", "queue": "board-game-results" }],
+		"consumers": [{ "queue": "board-game-results", "max_batch_size": 10, "max_retries": 5 }]
+	}
+
+	// To serve the sockets from the same domain as the web app, add a route
+	// and leave GAME_ORIGIN empty in apps/web:
+	// "routes": [{ "pattern": "example.com/ws/*", "zone_name": "example.com" }]
+}

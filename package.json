@@ -1,0 +1,20 @@
+{
+	"name": "board-game",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@12.18.0",
+	"engines": { "node": ">=22" },
+	"scripts": {
+		"setup": "node scripts/setup.mjs",
+		"dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+		"dev:host": "pnpm -r --parallel --filter \"./apps/*\" dev:host",
+		"build": "pnpm -r build",
+		"test": "pnpm -r test",
+		"check": "pnpm -r check",
+		"db:generate": "pnpm --filter @bg/db generate",
+		"db:migrate:local": "pnpm --filter @bg/realtime db:migrate:local",
+		"db:migrate:remote": "pnpm --filter @bg/realtime db:migrate:remote",
+		"smoke": "node scripts/smoke.mjs",
+		"deploy": "pnpm --filter @bg/realtime run deploy && pnpm --filter @bg/web run deploy"
+	}
+}

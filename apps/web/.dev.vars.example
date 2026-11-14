@@ -1,0 +1,8 @@
+# Local development only. In production set the secret with:
+#   wrangler secret put TICKET_SECRET
+# It must be the same value in apps/game and apps/web.
+TICKET_SECRET=dev-only-secret-change-me
+# Where the browser opens game sockets. Empty means "same origin as the page".
+# A bare port such as ":8787" means "the page's hostname on that port", which
+# keeps working when you open the site from another device (pnpm dev:host).
+GAME_ORIGIN=:8787

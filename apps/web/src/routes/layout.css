@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-ink: #0f1115;
+	--color-panel: #181b22;
+	--color-line: #2a2f3a;
+	--color-x: #5eead4;
+	--color-o: #fda4af;
+}
+
+html {
+	background: var(--color-ink);
+	color: #e7e9ee;
+	color-scheme: dark;
+}
+
+@keyframes pop {
+	from {
+		transform: scale(0.6);
+		opacity: 0;
+	}
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.mark-pop {
+	animation: pop 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.mark-pop {
+		animation: none;
+	}
+}

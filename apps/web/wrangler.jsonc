@@ -1,0 +1,38 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "board-game-web",
+	"compatibility_date": "2026-11-01",
+	"compatibility_flags": ["nodejs_als"],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"observability": { "enabled": true },
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "board-game",
+			// Replace with the id printed by `wrangler d1 create board-game`.
+			// Must match apps/game/wrangler.jsonc.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../packages/db/migrations"
+		}
+	],
+
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			// Replace with the id printed by `wrangler kv namespace create CACHE`.
+			"id": "00000000000000000000000000000000"
+		}
+	],
+
+	"vars": {
+		// Where the browser opens game sockets, e.g.
+		// "wss://board-game-realtime.<your-subdomain>.workers.dev".
+		// Leave empty when the realtime Worker is routed on this domain at /ws/*.
+		"GAME_ORIGIN": ""
+	}
+}

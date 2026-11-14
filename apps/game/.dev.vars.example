@@ -1,0 +1,4 @@
+# Local development only. In production set this with:
+#   wrangler secret put TICKET_SECRET
+# It must be the same value in apps/game and apps/web.
+TICKET_SECRET=dev-only-secret-change-me
