@@ -19,7 +19,7 @@
 			"database_name": "board-game",
 			// Replace with the id printed by `wrangler d1 create board-game`.
 			// Must match apps/web/wrangler.jsonc.
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "a0e5fa63-e7e4-4b38-aeb3-dc2647448158",
 			"migrations_dir": "../../packages/db/migrations"
 		}
 	],
