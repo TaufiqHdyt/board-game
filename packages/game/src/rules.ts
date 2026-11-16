@@ -9,10 +9,6 @@
 export type Seat = 0 | 1;
 
 export const MAX_MARKS = 3;
-/** Longest a single move may take. */
-export const MOVE_MS = 15_000;
-/** Total thinking time per player for the whole match (no increment). */
-export const BANK_MS = 120_000;
 
 export const LINES: readonly (readonly [number, number, number])[] = [
 	[0, 1, 2],

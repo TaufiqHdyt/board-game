@@ -1,60 +1,69 @@
-import { matches, players } from '@bg/db';
-import { eloDelta } from '@bg/game';
+import { matches, players, ratings } from '@bg/db';
+import { ratingChanges, scoreForSeat0, START_MMR } from '@bg/game';
 import type { MatchResult } from '@bg/proto';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 
 /**
- * Persist a finished match and apply rating changes.
+ * Persist a finished match and apply rating changes for that game.
  *
- * Idempotent on match id: queue deliveries are at-least-once, and the insert
- * uses ON CONFLICT DO NOTHING while the player updates are guarded by the
- * existence check, all inside one D1 batch (a single transaction).
+ * Idempotent on match id: queue deliveries are at-least-once, so a match that
+ * is already stored is skipped, and the match insert plus both rating updates
+ * go through one D1 batch (a single transaction).
  */
 export async function recordMatch(d1: D1Database, result: MatchResult): Promise<void> {
 	const db = drizzle(d1);
-	const [x, o] = result.players;
+	const [first, second] = result.players;
+	const ids = [first.pid, second.pid];
 
 	const existing = await db.select({ id: matches.id }).from(matches).where(eq(matches.id, result.matchId));
 	if (existing.length > 0) return;
 
-	// Make sure both players exist (a guest may never have been written yet).
+	// Make sure both players and their rating rows exist (a guest may never
+	// have been written yet).
 	await db
 		.insert(players)
-		.values([x, o].map((p) => ({ id: p.pid, name: p.name, createdAt: result.endedAt })))
+		.values(result.players.map((p) => ({ id: p.pid, name: p.name, createdAt: result.endedAt })))
 		.onConflictDoNothing();
+	if (result.ranked) {
+		await db
+			.insert(ratings)
+			.values(ids.map((playerId) => ({ playerId, game: result.game })))
+			.onConflictDoNothing();
+	}
 
 	// Ratings come from the database, not from the (possibly stale) ticket.
 	const rows = await db
-		.select({ id: players.id, mmr: players.mmr, games: players.games })
-		.from(players)
-		.where(inArray(players.id, [x.pid, o.pid]));
+		.select({ id: ratings.playerId, mmr: ratings.mmr, games: ratings.games })
+		.from(ratings)
+		.where(and(eq(ratings.game, result.game), inArray(ratings.playerId, ids)));
 	const current = new Map(rows.map((r) => [r.id, r]));
-	const xNow = current.get(x.pid);
-	const oNow = current.get(o.pid);
-	if (!xNow || !oNow) throw new Error('player rows missing');
+	const unrated = { mmr: START_MMR, games: 0 };
+	const firstNow = current.get(first.pid) ?? unrated;
+	const secondNow = current.get(second.pid) ?? unrated;
 
-	const winnerSeat = result.winner;
-	const [winNow, loseNow] = winnerSeat === 0 ? [xNow, oNow] : [oNow, xNow];
-	const delta = result.ranked ? eloDelta(winNow, loseNow) : { winner: 0, loser: 0 };
-	const xDelta = winnerSeat === 0 ? delta.winner : delta.loser;
-	const oDelta = winnerSeat === 1 ? delta.winner : delta.loser;
+	const [firstDelta, secondDelta] = result.ranked
+		? ratingChanges(firstNow, secondNow, scoreForSeat0(result.winner))
+		: [0, 0];
 
 	const insertMatch = db
 		.insert(matches)
 		.values({
 			id: result.matchId,
+			game: result.game,
 			ranked: result.ranked,
-			playerX: x.pid,
-			playerO: o.pid,
-			winner: winnerSeat === 0 ? x.pid : o.pid,
+			playerX: first.pid,
+			playerO: second.pid,
+			winner: result.winner === null ? null : result.players[result.winner].pid,
 			reason: result.reason,
 			moveCount: result.moves.length,
 			moves: result.moves,
-			xMmrBefore: xNow.mmr,
-			xMmrAfter: xNow.mmr + xDelta,
-			oMmrBefore: oNow.mmr,
-			oMmrAfter: oNow.mmr + oDelta,
+			scoreX: result.scores?.[0] ?? null,
+			scoreO: result.scores?.[1] ?? null,
+			xMmrBefore: firstNow.mmr,
+			xMmrAfter: firstNow.mmr + firstDelta,
+			oMmrBefore: secondNow.mmr,
+			oMmrAfter: secondNow.mmr + secondDelta,
 			startedAt: result.startedAt,
 			endedAt: result.endedAt
 		})
@@ -65,16 +74,17 @@ export async function recordMatch(d1: D1Database, result: MatchResult): Promise<
 		return;
 	}
 
-	const bump = (id: string, mmrDelta: number, won: boolean) =>
+	const bump = (id: string, seat: 0 | 1, mmrDelta: number) =>
 		db
-			.update(players)
+			.update(ratings)
 			.set({
-				mmr: sql`${players.mmr} + ${mmrDelta}`,
-				games: sql`${players.games} + 1`,
-				wins: sql`${players.wins} + ${won ? 1 : 0}`,
-				losses: sql`${players.losses} + ${won ? 0 : 1}`
+				mmr: sql`${ratings.mmr} + ${mmrDelta}`,
+				games: sql`${ratings.games} + 1`,
+				wins: sql`${ratings.wins} + ${result.winner === seat ? 1 : 0}`,
+				losses: sql`${ratings.losses} + ${result.winner !== null && result.winner !== seat ? 1 : 0}`,
+				draws: sql`${ratings.draws} + ${result.winner === null ? 1 : 0}`
 			})
-			.where(eq(players.id, id));
+			.where(and(eq(ratings.playerId, id), eq(ratings.game, result.game)));
 
-	await db.batch([insertMatch, bump(x.pid, xDelta, winnerSeat === 0), bump(o.pid, oDelta, winnerSeat === 1)]);
+	await db.batch([insertMatch, bump(first.pid, 0, firstDelta), bump(second.pid, 1, secondDelta)]);
 }

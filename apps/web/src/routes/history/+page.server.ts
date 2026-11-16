@@ -1,4 +1,5 @@
 import { matches, players } from '@bg/db';
+import { isGameId } from '@bg/game';
 import { desc, eq, inArray, or } from 'drizzle-orm';
 import { getDb } from '#lib/server/player.ts';
 import type { PageServerLoad } from './$types';
@@ -34,8 +35,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 			return {
 				id: m.id,
 				opponent: names.get(asX ? m.playerO : m.playerX) ?? 'Unknown',
+				game: isGameId(m.game) ? m.game : ('vanish' as const),
 				symbol: asX ? 'X' : 'O',
-				won: m.winner === me,
+				result: m.winner === null ? ('drawn' as const) : m.winner === me ? ('won' as const) : ('lost' as const),
+				score: m.scoreX === null || m.scoreO === null ? null : asX ? [m.scoreX, m.scoreO] : [m.scoreO, m.scoreX],
 				reason: m.reason,
 				ranked: m.ranked,
 				moveCount: m.moveCount,

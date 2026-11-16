@@ -7,14 +7,15 @@
 	let { children, data }: LayoutProps = $props();
 
 	const links = [
-		{ href: '/', label: 'Play' },
+		{ href: '/', label: 'Games' },
 		{ href: '/leaderboard', label: 'Leaderboard' },
 		{ href: '/history', label: 'History' }
 	];
 </script>
 
 <svelte:head>
-	<title>Vanish: tic-tac-toe that never ties</title>
+	<title>Board Game</title>
+	<meta name="description" content="Play Vanish and Congklak online against friends or ranked opponents." />
 	<meta name="theme-color" content="#1f3832" />
 </svelte:head>
 
@@ -22,7 +23,7 @@
 	<header class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-5">
 		<a href="/" class="flex items-center gap-1.5 font-hand text-3xl leading-none">
 			<Glyph seat={0} size={20} /><Glyph seat={1} size={20} />
-			<span class="ml-1">Vanish</span>
+			<span class="ml-1">Board Game</span>
 		</a>
 		<nav class="flex items-center gap-5 text-[0.95rem]" aria-label="Main">
 			{#each links as link (link.href)}

@@ -2,9 +2,9 @@
 	import Game from '#lib/Game.svelte';
 	import type { PageProps } from './$types';
 
-	let { params }: PageProps = $props();
+	let { data }: PageProps = $props();
 </script>
 
-{#key params.id}
-	<Game room={params.id} />
+{#key data.room}
+	<Game game={data.game} room={data.room} />
 {/key}

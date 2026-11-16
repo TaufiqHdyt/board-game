@@ -1,5 +1,7 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": { "types": ["./worker-configuration.d.ts"] },
-	"include": ["src"]
+	"include": ["src"],
+	// Tests run in Node under Vitest, not in the Workers runtime.
+	"exclude": ["src/**/*.test.ts"]
 }

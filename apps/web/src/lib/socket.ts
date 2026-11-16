@@ -1,6 +1,9 @@
+import type { GameId } from '@bg/game';
 import { WebSocket as ReconnectingWebSocket } from 'partysocket';
 
-export type SocketTarget = { kind: 'queue' } | { kind: 'room'; room: string };
+export type SocketTarget =
+	| { kind: 'queue'; game: GameId }
+	| { kind: 'room'; game: GameId; room: string };
 
 interface TicketResponse {
 	origin: string;

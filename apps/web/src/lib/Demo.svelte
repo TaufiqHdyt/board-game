@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { replay } from '@bg/game';
 	import { onMount } from 'svelte';
-	import Board from './Board.svelte';
+	import VanishBoard from './VanishBoard.svelte';
 
 	// A real game: both sides reach three marks, then every move rubs one out.
 	const script = [0, 3, 1, 2, 5, 7, 6, 0, 4, 8, 2];
@@ -32,7 +32,7 @@
 
 <figure>
 	<div aria-hidden="true">
-		<Board {board} showWin label="Example game" />
+		<VanishBoard {board} showWin label="Example game" />
 	</div>
 	<figcaption class="mt-3 min-h-12 text-center text-sm text-dust" aria-live="off">
 		{caption}

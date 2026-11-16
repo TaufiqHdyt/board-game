@@ -1,8 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
 import { PlayerInfo, TICKET_TTL_MS, signToken, type QueueServerMsg, type Ticket } from '@bg/proto';
-import { PLAYER_HEADER } from './player-header';
+import { isGameId, type GameId } from '@bg/game';
+import { GAME_HEADER, PLAYER_HEADER } from './player-header';
 
 interface Waiting {
+	game: GameId;
 	player: PlayerInfo;
 	joinedAt: number;
 }
@@ -15,7 +17,8 @@ const WINDOW_PER_SECOND = 25;
 const RESCAN_MS = 2_000;
 
 /**
- * Single global matchmaking queue. Waiting players are simply the open
+ * The matchmaking queue for one game (the instance is named after the game
+ * id). Waiting players are simply the open
  * sockets; each carries its player and join time as a hibernation attachment,
  * so there is no separate queue state to keep in sync.
  */
@@ -24,7 +27,8 @@ export class Matchmaker extends DurableObject<Env> {
 		const player = PlayerInfo.safeParse(
 			JSON.parse(decodeURIComponent(request.headers.get(PLAYER_HEADER) ?? 'null'))
 		);
-		if (!player.success) return new Response('Missing player', { status: 400 });
+		const game = request.headers.get(GAME_HEADER);
+		if (!player.success || !isGameId(game)) return new Response('Missing player', { status: 400 });
 
 		// A player can only wait once; a second tab takes over the slot.
 		for (const old of this.ctx.getWebSockets(player.data.pid)) {
@@ -33,7 +37,7 @@ export class Matchmaker extends DurableObject<Env> {
 
 		const pair = new WebSocketPair();
 		this.ctx.acceptWebSocket(pair[1], [player.data.pid]);
-		const waiting: Waiting = { player: player.data, joinedAt: Date.now() };
+		const waiting: Waiting = { game, player: player.data, joinedAt: Date.now() };
 		pair[1].serializeAttachment(waiting);
 
 		await this.matchAll();
@@ -108,20 +112,22 @@ export class Matchmaker extends DurableObject<Env> {
 		b: { ws: WebSocket; info: Waiting }
 	): Promise<void> {
 		const roomId = crypto.randomUUID();
-		// Random seats: X moves first, so this is the first-move coin flip.
+		// Random seats: seat 0 moves first, so this is the first-move coin flip.
 		const seats: [PlayerInfo, PlayerInfo] =
 			Math.random() < 0.5 ? [a.info.player, b.info.player] : [b.info.player, a.info.player];
-		await this.env.GAME_ROOM.getByName(roomId).init(roomId, seats);
+		const game = a.info.game;
+		await this.env.GAME_ROOM.getByName(roomId).init(roomId, game, seats);
 
 		for (const entry of [a, b]) {
 			const ticket: Ticket = {
 				kind: 'room',
+				game,
 				player: entry.info.player,
 				room: roomId,
 				exp: Date.now() + TICKET_TTL_MS
 			};
 			const signed = await signToken(ticket, this.env.TICKET_SECRET);
-			this.send(entry.ws, { type: 'matched', roomId, ticket: signed });
+			this.send(entry.ws, { type: 'matched', game, roomId, ticket: signed });
 			entry.ws.close(1000, 'Matched');
 		}
 	}

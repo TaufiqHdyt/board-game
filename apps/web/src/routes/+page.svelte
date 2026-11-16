@@ -1,64 +1,91 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { getGame, type CongklakState } from '@bg/game';
+	import CongklakBoard from '#lib/CongklakBoard.svelte';
 	import Demo from '#lib/Demo.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
-	const p = $derived(data.player);
+
+	// A middle-of-the-game position, so the board on the lobby is not a blank grid.
+	const sample: CongklakState = {
+		holes: [
+			[3, 0, 9, 1, 0, 8, 2],
+			[0, 10, 2, 0, 7, 1, 9]
+		],
+		stores: [24, 22],
+		turn: 0,
+		over: false,
+		winner: null,
+		moveCount: 12
+	};
+
+	const facts = {
+		vanish: '15 seconds a move, two minutes each. Games take about a minute.',
+		congklak: '20 seconds a move, five minutes each. 98 seeds; 49 each is a draw.'
+	} as const;
 </script>
 
-<section class="grid items-center gap-x-12 gap-y-8 pt-4 sm:grid-cols-[1fr_minmax(0,16rem)] sm:pt-10">
-	<div>
-		<h1 class="font-hand text-[clamp(2.7rem,7.4vw,3.6rem)] whitespace-nowrap leading-[0.95]">
-			Three marks each.<br />Nobody draws.
-		</h1>
-		<p class="mt-5 max-w-[34ch] text-lg leading-relaxed text-dust">
-			Place a fourth mark and your oldest is rubbed out. The board never fills, so someone always
-			wins.
-		</p>
+<h1 class="pt-4 font-hand text-[clamp(2.7rem,7.4vw,3.6rem)] leading-none sm:pt-8">Pick a game.</h1>
+<p class="mt-3 max-w-[44ch] text-lg text-dust">
+	Play a stranger near your rating, or send a friend a link. Each game keeps its own rating.
+</p>
 
-		<div class="mt-7 flex flex-wrap gap-3">
-			<a href="/play" class="btn btn-solid">Play ranked</a>
-			<form method="POST" action="?/room">
-				<button class="btn btn-line">Play a friend</button>
-			</form>
+{#each data.games as entry (entry.id)}
+	{@const def = getGame(entry.id)}
+	{@const r = entry.record}
+	<section
+		class="rule mt-10 grid items-center gap-x-12 gap-y-7 border-t pt-9 {entry.id === 'vanish'
+			? 'sm:grid-cols-[1fr_minmax(0,15rem)]'
+			: 'sm:grid-cols-[1fr_minmax(0,22rem)]'}"
+		aria-labelledby="game-{entry.id}"
+	>
+		<div>
+			<h2 id="game-{entry.id}" class="font-hand text-5xl leading-none">{def.name}</h2>
+			<p class="mt-3 max-w-[36ch] text-lg leading-relaxed">{def.pitch}</p>
+			<p class="mt-2 text-sm text-dust">{facts[entry.id]}</p>
+
+			<div class="mt-6 flex flex-wrap gap-3">
+				<a href="/play/{entry.id}" class="btn btn-solid">Play ranked</a>
+				<form method="POST" action="?/room">
+					<input type="hidden" name="game" value={entry.id} />
+					<button class="btn btn-line" aria-label="Play a friend at {def.name}">Play a friend</button>
+				</form>
+			</div>
+
+			<p class="mt-5 text-dust">
+				{#if r.games === 0}
+					You start at <span class="font-hand text-2xl text-chalk tabular-nums">{r.mmr}</span>. Ranked
+					games move it.
+				{:else}
+					Your rating is <span class="font-hand text-2xl text-chalk tabular-nums">{r.mmr}</span>
+					<span class="whitespace-nowrap">
+						after {r.wins} won, {r.losses} lost{#if def.canDraw}, {r.draws} drawn{/if}.
+					</span>
+				{/if}
+			</p>
 		</div>
-		<p class="mt-4 text-sm text-dust">15 seconds a move, two minutes each for the whole game.</p>
-	</div>
 
-	<div class="mx-auto w-full max-w-[17rem]">
-		<Demo />
-	</div>
-</section>
+		<div class="mx-auto w-full {entry.id === 'vanish' ? 'max-w-[15rem]' : 'max-w-[22rem]'}">
+			{#if entry.id === 'vanish'}
+				<Demo />
+			{:else}
+				<div aria-hidden="true" inert>
+					<CongklakBoard state={sample} you={0} />
+				</div>
+			{/if}
+		</div>
+	</section>
+{/each}
 
 <section class="rule mt-12 border-t pt-8">
-	<h2 class="font-hand text-3xl">Your record</h2>
-
-	<dl class="mt-4 flex flex-wrap gap-x-10 gap-y-4">
-		<div>
-			<dt class="text-sm text-dust">Rating</dt>
-			<dd class="font-hand text-5xl leading-none tabular-nums">{p.mmr}</dd>
-		</div>
-		<div>
-			<dt class="text-sm text-dust">Won</dt>
-			<dd class="font-hand text-5xl leading-none tabular-nums text-x">{p.wins}</dd>
-		</div>
-		<div>
-			<dt class="text-sm text-dust">Lost</dt>
-			<dd class="font-hand text-5xl leading-none tabular-nums text-o">{p.losses}</dd>
-		</div>
-	</dl>
-	{#if p.games === 0}
-		<p class="mt-3 text-sm text-dust">Everyone starts at 1000. Only ranked games move it.</p>
-	{/if}
-
-	<form method="POST" action="?/rename" use:enhance class="mt-8 max-w-md">
+	<form method="POST" action="?/rename" use:enhance class="max-w-md">
 		<label for="name" class="text-sm text-dust">Name shown to opponents</label>
 		<div class="mt-1.5 flex gap-3">
 			<input
 				id="name"
 				name="name"
-				value={form?.name ?? p.name}
+				value={form?.name ?? data.name}
 				minlength="2"
 				maxlength="20"
 				required

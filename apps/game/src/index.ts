@@ -1,5 +1,5 @@
 import { MatchResult, Ticket, verifyToken } from '@bg/proto';
-import { PLAYER_HEADER } from './player-header';
+import { GAME_HEADER, PLAYER_HEADER } from './player-header';
 import { recordMatch } from './results';
 
 export { GameRoom } from './room';
@@ -25,11 +25,13 @@ export default {
 		// Never trust a client-supplied copy of the player header.
 		const headers = new Headers(request.headers);
 		headers.set(PLAYER_HEADER, encodeURIComponent(JSON.stringify(ticket.data.player)));
+		headers.set(GAME_HEADER, ticket.data.game);
 		const forwarded = new Request(request, { headers });
 
 		if (isQueue) {
 			if (ticket.data.kind !== 'queue') return new Response('Wrong ticket kind', { status: 403 });
-			return env.MATCHMAKER.getByName('global').fetch(forwarded);
+			// One queue per game, so players are only ever paired within a game.
+			return env.MATCHMAKER.getByName(ticket.data.game).fetch(forwarded);
 		}
 
 		const roomId = roomMatch![1]!;

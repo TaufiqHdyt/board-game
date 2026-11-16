@@ -1,17 +1,30 @@
 <script lang="ts">
-	import { eloDelta, otherSeat, type Seat } from '@bg/game';
+	import {
+		getGame,
+		otherSeat,
+		ratingChanges,
+		scoreForSeat0,
+		type Board,
+		type CongklakState,
+		type GameId,
+		type Seat
+	} from '@bg/game';
 	import { RoomServerMsg, type ClientMsg, type RoomState } from '@bg/proto';
 	import { onMount } from 'svelte';
-	import Board from './Board.svelte';
+	import CongklakBoard from './CongklakBoard.svelte';
 	import Glyph from './Glyph.svelte';
 	import { openSocket } from './socket';
+	import VanishBoard from './VanishBoard.svelte';
 
-	let { room }: { room: string } = $props();
+	/** `game` only matters when this visit opens a new private room. */
+	let { game: requestedGame, room }: { game: GameId; room: string } = $props();
 
 	let game = $state<RoomState | null>(null);
 	let link = $state<'connecting' | 'open' | 'lost' | 'replaced' | 'refused'>('connecting');
 	let notice = $state('');
 	let copied = $state(false);
+	/** True while a board is replaying the last move. */
+	let boardBusy = $state(false);
 	/** Server clock minus local clock, so countdowns agree with the referee. */
 	let clockOffset = 0;
 	let tick = $state(Date.now());
@@ -19,7 +32,7 @@
 
 	onMount(() => {
 		let failures = 0;
-		const ws = openSocket({ kind: 'room', room });
+		const ws = openSocket({ kind: 'room', game: requestedGame, room });
 		socket = ws;
 
 		ws.addEventListener('open', () => {
@@ -74,6 +87,8 @@
 		switch (code) {
 			case 'occupied':
 				return 'That square is taken.';
+			case 'empty_hole':
+				return 'That hole is empty.';
 			case 'not_your_turn':
 				return 'Wait for your turn.';
 			case 'game_over':
@@ -83,29 +98,31 @@
 		}
 	}
 
+	const def = $derived(game ? getGame(game.game) : null);
 	const playing = $derived(game?.status === 'playing');
-	const myTurn = $derived(playing && game?.board.turn === game?.you);
+	const myTurn = $derived(playing && game?.turn === game?.you);
+	// turnStartedAt can be a moment in the future while the last move replays.
 	const elapsed = $derived(
 		game && playing ? Math.max(0, tick + clockOffset - game.turnStartedAt) : 0
 	);
 	const moveLeft = $derived(
-		game && playing ? Math.max(0, Math.min(game.moveMs, game.bank[game.board.turn]) - elapsed) : 0
+		game && playing ? Math.max(0, Math.min(game.moveMs, game.bank[game.turn]) - elapsed) : 0
 	);
-	const iWon = $derived(game?.status === 'ended' && game.board.winner === game.you);
+	const ended = $derived(game?.status === 'ended');
+	const drawn = $derived(ended && game?.winner === null);
+	const iWon = $derived(ended && game?.winner === game?.you);
 
 	const ratingChange = $derived.by(() => {
-		if (!game || game.status !== 'ended' || !game.ranked || game.board.winner === null) return null;
-		const winner = game.players[game.board.winner];
-		const loser = game.players[game.board.winner === 0 ? 1 : 0];
-		if (!winner || !loser) return null;
-		const delta = eloDelta(winner, loser);
-		return iWon ? delta.winner : delta.loser;
+		if (!game || !ended || !game.ranked) return null;
+		const [first, second] = game.players;
+		if (!first || !second) return null;
+		return ratingChanges(first, second, scoreForSeat0(game.winner))[game.you];
 	});
 
 	function bankFor(seat: Seat): number {
 		if (!game) return 0;
 		const base = game.bank[seat];
-		return playing && game.board.turn === seat ? Math.max(0, base - elapsed) : base;
+		return playing && game.turn === seat ? Math.max(0, base - elapsed) : base;
 	}
 
 	function clock(ms: number): string {
@@ -114,10 +131,15 @@
 	}
 
 	function endText(state: RoomState): string {
-		const won = state.board.winner === state.you;
+		const won = state.winner === state.you;
+		const score = state.scores
+			? ` ${state.scores[state.you]} to ${state.scores[otherSeat(state.you)]}.`
+			: '';
 		switch (state.reason) {
 			case 'line':
 				return won ? 'Three in a line.' : 'Your opponent made three in a line.';
+			case 'score':
+				return score.trim();
 			case 'timeout':
 				return won ? 'Your opponent ran out of time.' : 'You ran out of time.';
 			case 'resign':
@@ -140,11 +162,11 @@
 
 {#snippet playerRow(state: RoomState, seat: Seat)}
 	{@const player = state.players[seat]}
-	{@const active = state.status === 'playing' && state.board.turn === seat}
+	{@const active = state.status === 'playing' && state.turn === seat}
 	{@const left = bankFor(seat)}
 	<div class="py-2.5">
 		<div class="flex items-center gap-3">
-			<Glyph {seat} size={26} />
+			<Glyph {seat} size={26} shape={state.game === 'vanish' ? 'mark' : 'dot'} />
 			<div class="min-w-0 flex-1">
 				<p class="truncate text-lg leading-tight font-semibold">
 					{player?.name}{#if seat === state.you}<span class="ml-1.5 font-normal text-dust">(you)</span>{/if}
@@ -194,7 +216,8 @@
 	<p class="pt-16 text-center font-hand text-3xl text-dust" role="status">Connecting…</p>
 {:else if game.status === 'waiting'}
 	<div class="mx-auto max-w-md pt-10 text-center">
-		<h1 class="font-hand text-5xl leading-none">Waiting for your friend</h1>
+		<p class="text-dust">{def?.name}</p>
+		<h1 class="mt-1 font-hand text-5xl leading-none">Waiting for your friend</h1>
 		<p class="mx-auto mt-4 max-w-[30ch] text-dust">
 			Send them the link to this page. The game starts as soon as they open it.
 		</p>
@@ -206,16 +229,20 @@
 	</div>
 {:else}
 	{@const state = game}
-	<div class="mx-auto max-w-[26rem]">
+	<div class="mx-auto {state.game === 'congklak' ? 'max-w-[40rem]' : 'max-w-[26rem]'}">
 		{@render playerRow(state, otherSeat(state.you))}
 
 		<div class="rule border-y py-3">
 			<p class="min-h-9 text-center" role="status" aria-live="polite">
 				{#if state.status === 'ended'}
-					<span class="font-hand text-3xl leading-none {iWon ? 'text-x' : 'text-o'}">
-						{iWon ? 'You won.' : 'You lost.'}
+					<span class="font-hand text-3xl leading-none {drawn ? '' : iWon ? 'text-x' : 'text-o'}">
+						{drawn ? 'A draw.' : iWon ? 'You won.' : 'You lost.'}
 					</span>
 					<span class="ml-1 text-dust">{endText(state)}</span>
+				{:else if boardBusy}
+					<span class="text-dust">
+						{state.lastMove?.seat === state.you ? 'Sowing your seeds' : `${state.players[otherSeat(state.you)]?.name} is sowing`}
+					</span>
 				{:else if myTurn}
 					<span class="font-hand text-3xl leading-none">Your move</span>
 					<span class="ml-1 tabular-nums {moveLeft < 5000 ? 'text-warn' : 'text-dust'}">
@@ -226,22 +253,38 @@
 				{/if}
 			</p>
 
-			<div class="mx-auto mt-1 max-w-[22rem]">
-				<Board
-					board={state.board}
-					showWin={state.reason === 'line'}
-					canPlay={myTurn ? state.you : null}
-					onplay={(cell) => send({ type: 'move', cell })}
-				/>
-			</div>
+			{#if state.game === 'congklak'}
+				<div class="mt-2">
+					<CongklakBoard
+						state={state.state as CongklakState}
+						you={state.you}
+						lastMove={state.lastMove}
+						canPlay={myTurn}
+						onplay={(hole) => send({ type: 'move', move: hole })}
+						onbusy={(busy) => (boardBusy = busy)}
+					/>
+				</div>
+			{:else}
+				{@const board = { ...(state.state as Board), winner: state.winner }}
+				<div class="mx-auto mt-1 max-w-[22rem]">
+					<VanishBoard
+						{board}
+						showWin={state.reason === 'line'}
+						canPlay={myTurn ? state.you : null}
+						onplay={(cell) => send({ type: 'move', move: cell })}
+					/>
+				</div>
+			{/if}
 
 			<p class="min-h-5 text-center text-sm text-dust">
 				{#if notice}
 					<span class="text-warn">{notice}</span>
 				{:else if link === 'lost'}
 					<span class="text-warn">Connection lost. Reconnecting…</span>
-				{:else if playing && state.board.moveCount >= 5}
+				{:else if playing && state.game === 'vanish' && state.moveCount >= 5}
 					A dotted mark is rubbed out on its owner's next move.
+				{:else if playing && state.game === 'congklak' && state.moveCount === 0}
+					Pick one of your holes. Seeds are sown clockwise, towards your store on the left.
 				{/if}
 			</p>
 		</div>
@@ -253,12 +296,12 @@
 				{#if ratingChange !== null}
 					<p class="text-dust">
 						Rating
-						<span class="font-hand text-3xl tabular-nums {ratingChange >= 0 ? 'text-x' : 'text-o'}">
+						<span class="font-hand text-3xl tabular-nums {ratingChange > 0 ? 'text-x' : ratingChange < 0 ? 'text-o' : ''}">
 							{ratingChange >= 0 ? '+' : '−'}{Math.abs(ratingChange)}
 						</span>
 					</p>
 				{/if}
-				<a href={state.ranked ? '/play' : '/'} data-sveltekit-reload class="btn btn-solid">
+				<a href={state.ranked ? `/play/${state.game}` : '/'} data-sveltekit-reload class="btn btn-solid">
 					{state.ranked ? 'Play again' : 'Back to the lobby'}
 				</a>
 			{:else}

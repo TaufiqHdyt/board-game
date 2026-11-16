@@ -1,21 +1,19 @@
 import { players } from '@bg/db';
+import { GAME_IDS, isGameId } from '@bg/game';
 import { Session, signToken } from '@bg/proto';
 import { fail, redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { SESSION_COOKIE } from '../hooks.server';
-import { ensurePlayer, env, getDb } from '#lib/server/player.ts';
+import { ensurePlayer, env, getDb, getRecord } from '#lib/server/player.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const player = await ensurePlayer(getDb(), locals.session);
+	const db = getDb();
+	const player = await ensurePlayer(db, locals.session);
+	const records = await Promise.all(GAME_IDS.map((game) => getRecord(db, player.id, game)));
 	return {
-		player: {
-			name: player.name,
-			mmr: player.mmr,
-			games: player.games,
-			wins: player.wins,
-			losses: player.losses
-		}
+		name: player.name,
+		games: GAME_IDS.map((id, i) => ({ id, record: records[i]! }))
 	};
 };
 
@@ -47,8 +45,10 @@ export const actions: Actions = {
 		return { message: 'Saved.', name };
 	},
 
-	room: async () => {
+	room: async ({ request }) => {
+		const game = (await request.formData()).get('game');
+		if (!isGameId(game)) return fail(400, { name: undefined, message: 'Unknown game.' });
 		// Unguessable id; whoever opens the link second becomes the opponent.
-		redirect(303, `/room/${crypto.randomUUID()}`);
+		redirect(303, `/room/${game}/${crypto.randomUUID()}`);
 	}
 };
