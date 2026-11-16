@@ -2,8 +2,10 @@
 	"name": "board-game",
 	"private": true,
 	"type": "module",
-	"packageManager": "pnpm@12.18.0",
-	"engines": { "node": ">=22" },
+	"packageManager": "pnpm@12.21.0",
+	"engines": {
+		"node": ">=22"
+	},
 	"scripts": {
 		"dev:setup": "node scripts/setup.mjs",
 		"dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
